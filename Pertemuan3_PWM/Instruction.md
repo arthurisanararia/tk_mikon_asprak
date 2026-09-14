@@ -128,25 +128,7 @@ void loop() {
   delay(15);
 }
 ```
-
-**b. Digital Input (Contoh: Push Button)**
-Kalian bisa menggunakan mode `INPUT_PULLUP` pada ESP32, sehingga tombol akan bernilai `LOW` saat ditekan.
-```cpp
-const int buttonPin = 21;
-
-void setup() {
-  pinMode(buttonPin, INPUT_PULLUP);
-}
-
-void loop() {
-  if (digitalRead(buttonPin) == LOW) {
-    // Tombol sedang ditekan
-    // (Masukkan logika penambahan nilai PWM di sini)
-  }
-}
-```
-
-**c. Sensor I2C (Contoh: BME280 / Suhu)**
+**b. Sensor I2C (Contoh: BME280 / Suhu)**
 Untuk sensor digital I2C, kalian membutuhkan library spesifik (misal: `Adafruit BME280`). 
 ```cpp
 #include <Wire.h>
@@ -175,7 +157,7 @@ void loop() {
 2. **Integrasi Dinamis dengan Input:**
    Gunakan komponen input yang kelompok kalian terima untuk mengontrol nilai sinyal PWM secara dinamis oleh pengguna.
    - **Kelompok LED:** Buatlah sistem PWM yang terdiri dari minimal 3 buah LED. Atur agar ketiga LED tersebut menyala terang dan meredup berdasarkan suhu dari BME280.
-   - **Kelompok Motor Servo:** Buatlah program untuk menggerakkan lengan servo secara perlahan dan halus (tidak patah-patah) dari sudut awal ke sudut maksimal, lalu kembali lagi dan hanya terjadi saat momentary push button ditekan.
+   - **Kelompok Motor Servo:** Buatlah program untuk menggerakkan lengan servo secara perlahan dan halus (tidak patah-patah) melalui input potentiometer.
    - **Kelompok Motor DC:** Buatlah program untuk mengontrol kecepatan putaran Motor DC menggunakan Driver TB6612FNG. Atur kecepatan putaran motor berdasarkan potentiometer.
 
 **Pertanyaan:**
