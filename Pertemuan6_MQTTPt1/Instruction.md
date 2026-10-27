@@ -1,38 +1,34 @@
 # PERTEMUAN 6
-# ESP32 MQTT Bagian 1: Remote Actuator Control & Hybrid Safety Interlock
+# ESP32 MQTT Bagian 1: Pengendalian Aktuator & Proteksi Lokal
 
 ---
 
 ## A. TUJUAN
-1. Memahami arsitektur protokol komunikasi MQTT (Message Queuing Telemetry Transport) pada mikrokontroler ESP32 (ESP32 DevKit V1 maupun ESP32-S3).
-2. Mengonfigurasi ESP32 sebagai MQTT Subscriber untuk mengendalikan aktuator fisik (LED dan Motor Servo) secara *real-time* via HiveMQ Web Client.
-3. Mengimplementasikan kendali *hybrid* yang menggabungkan kontrol jarak jauh MQTT dengan pengaman fisik lokal (Push Button atau Potensiometer 10k) disertai pelaporan status (*feedback state*).
+1. Memahami arsitektur komunikasi protokol MQTT pada ESP32 (DevKit V1 maupun S3).
+2. Mengonfigurasi ESP32 sebagai MQTT Subscriber untuk mengendalikan aktuator fisik (LED / Motor Servo) melalui aplikasi desktop MQTTX dan HiveMQ Cloud Cluster.
 
 ---
 
 ## B. DASAR TEORI
 
-MQTT adalah protokol komunikasi data ringan berbasis model **Publish/Subscribe** yang bekerja di atas protokol TCP/IP. Protokol ini sangat hemat bandwidth dan efisien untuk komunikasi perangkat IoT.
+MQTT adalah protokol komunikasi data ringan berbasis **Publish/Subscribe** melalui perantara server (**Broker**).
+- **Broker:** Server penyalur pesan (`2d5cd8d3bcbd425a8865b60469b32931.s1.eu.hivemq.cloud`).
+- **Publisher:** Pengirim data ke topik tertentu.
+- **Subscriber:** Penerima data yang mendaftar pada topik tertentu.
+- **Topik:** Saluran pesan hierarkis yang dipisahkan garis miring (bersifat *case-sensitive*).
 
 ```
-[ HiveMQ Web Client ]  --- Publish: "ugm/mikon/kel1/cmd" --->  [ Broker: broker.hivemq.com ]
-[ HiveMQ Web Client ]  <-- Publish: "ugm/mikon/kel1/status" --  [ Broker: broker.hivemq.com ]
-                                                                       |
-                                                               Forward to Subscriber
-                                                                       v
-                                                               [ ESP32 (Subscriber) ]
+[ Aplikasi MQTTX Windows ]  --- Publish: "ugm/mikon/kel1/cmd" --->  [ HiveMQ Cloud Cluster ]
+[ Aplikasi MQTTX Windows ]  <-- Publish: "ugm/mikon/kel1/status" --  [ HiveMQ Cloud Cluster ]
+                                                                             |
+                                                                     Forward to Subscriber
+                                                                             v
+                                                                     [ ESP32 (Subscriber) ]
 ```
 
-- **Broker:** Server perantara pesan (misal: `broker.hivemq.com`).
-- **Publisher:** Pengirim pesan yang mempublikasikan data ke topik tertentu.
-- **Subscriber:** Penerima pesan yang mendaftarkan diri pada topik tertentu.
-- **Topik:** Jalur kanal pesan bertingkat yang dipisahkan garis miring (contoh: `ugm/mikon/kel1/cmd`). Bersifat *case-sensitive*.
-
-Penerimaan data pada ESP32 ditangani melalui fungsi callback:
-```cpp
-void callback(char* topic, byte* payload, unsigned int length)
-```
-Data `payload` diterima dalam bentuk array byte tanpa *null-terminator* (`\0`). Untuk mengolahnya sebagai teks atau angka, payload perlu disalin atau ditambahkan karakter `\0` sebelum diproses (`strcmp`, `atoi`, dll).
+**Format Topik Kelompok (Ganti `[X]` dengan nomor kelompok, contoh: `kel1`, `kel2`):**
+- Topik Perintah (Subscribe): `ugm/mikon/kel[X]/cmd`
+- Topik Status (Publish): `ugm/mikon/kel[X]/status`
 
 ---
 
@@ -40,66 +36,94 @@ Data `payload` diterima dalam bentuk array byte tanpa *null-terminator* (`\0`). 
 
 1. ESP32 DevKit V1 / ESP32-S3 (1 unit)
 2. Kabel Data USB (1 pcs)
-3. Breadboard & Kabel Jumper (secukupnya)
-4. **Aktuator (Sesuai kelompok):**
-   - Multi-LED (3 pcs) & Resistor 220 $\Omega$ (3 pcs)
-   - Motor Servo (1 pcs)
-5. **Input Pengaman Lokal (Sesuai kelompok):**
+3. Breadboard & Kabel Jumper
+4. **Komponen Jalur A (Kelompok LED):**
+   - LED 5mm (1 pcs) & Resistor 220 $\Omega$ (1 pcs)
    - Push Button (1 pcs) & Resistor 10k $\Omega$ (1 pcs)
+5. **Komponen Jalur B (Kelompok Servo):**
+   - Motor Servo SG90 (1 pcs)
    - Potensiometer Rotary 10k $\Omega$ (1 pcs)
-6. Laptop / PC terkoneksi internet (Browser Web)
+6. Laptop / PC Windows terpasang aplikasi MQTTX (Hotspot HP 2.4 GHz)
 
 ---
 
-## D. TABEL PEMBAGIAN KELOMPOK (10 KELOMPOK)
+## D. PANDUAN APLIKASI MQTTX (WINDOWS DESKTOP)
 
-| Kelompok | Aktuator Utama | Input Pengaman Lokal | Peran Sistem Pengaman Lokal | Topik Kontrol (Subscribe) | Topik Status (Publish) |
-|:---:|:---|:---|:---|:---|:---|
-| **Kel 1** | Multi-LED (3 LED) | Push Button | Emergency All-OFF | `ugm/mikon/kel1/cmd` | `ugm/mikon/kel1/status` |
-| **Kel 2** | Multi-LED (3 LED) | Push Button | Emergency All-OFF | `ugm/mikon/kel2/cmd` | `ugm/mikon/kel2/status` |
-| **Kel 3** | Multi-LED (3 LED) | Push Button | Alert Strobe Override | `ugm/mikon/kel3/cmd` | `ugm/mikon/kel3/status` |
-| **Kel 4** | Dual LED (PWM) | Potensiometer 10k | Brightness Ceiling Limiter | `ugm/mikon/kel4/val` | `ugm/mikon/kel4/status` |
-| **Kel 5** | Dual LED (PWM) | Potensiometer 10k | Brightness Ceiling Limiter | `ugm/mikon/kel5/val` | `ugm/mikon/kel5/status` |
-| **Kel 6** | Motor Servo | Push Button | Emergency Center 90° & Lock | `ugm/mikon/kel6/servo` | `ugm/mikon/kel6/status` |
-| **Kel 7** | Motor Servo | Push Button | Emergency Center 90° & Lock | `ugm/mikon/kel7/servo` | `ugm/mikon/kel7/status` |
-| **Kel 8** | Motor Servo | Potensiometer 10k | Local Manual vs Remote Mode | `ugm/mikon/kel8/servo` | `ugm/mikon/kel8/status` |
-| **Kel 9** | Motor Servo | Potensiometer 10k | Local Manual vs Remote Mode | `ugm/mikon/kel9/servo` | `ugm/mikon/kel9/status` |
-| **Kel 10**| Motor Servo | Potensiometer 10k | Safety Angle Range Limiter | `ugm/mikon/kel10/servo` | `ugm/mikon/kel10/status` |
+Praktikan menggunakan aplikasi desktop **MQTTX** pada laptop Windows:
 
----
-
-## E. PANDUAN HIVEMQ WEB CLIENT
-
-1. Buka browser dan akses: [https://www.hivemq.com/demos/websocket-client/](https://www.hivemq.com/demos/websocket-client/)
-2. Pada panel **Connection**:
-   - Host: `broker.hivemq.com`
-   - Port: `8000`
-   - Klik **Connect** (pastikan status berwarna hijau / Connected).
-3. **Kirim Perintah ke ESP32 (Publish):**
-   - Masukkan topik kontrol kelompok Anda di kolom **Topic**.
-   - Masukkan pesan pada kolom **Message**, lalu klik **Publish**.
-4. **Pantau Status dari ESP32 (Subscribe):**
-   - Pada panel **Subscriptions**, klik **Add New Topic Subscription**.
-   - Masukkan topik status kelompok Anda (QoS 0), lalu klik **Subscribe**.
+1. Buka aplikasi **MQTTX**.
+2. Klik **+ New Connection**, lalu atur parameter berikut:
+   - **Name:** `Kelompok [X]` (contoh: `Kelompok 1`)
+   - **Protocol:** Pilih **`mqtts://`**
+   - **Host:** `2d5cd8d3bcbd425a8865b60469b32931.s1.eu.hivemq.cloud`
+   - **Port:** `8883`
+   - **SSL/TLS:** **ON (Hijau)**
+   - **SSL Secure:** **OFF (Abu-abu / Tidak Aktif)**
+   - **MQTT Version:** `3.1.1` (pada menu *Advanced*)
+   - **Username:** *(Diberikan oleh Asisten)*
+   - **Password:** *(Diberikan oleh Asisten)*
+3. Klik tombol **Connect** di pojok kanan atas hingga status berwarna hijau (**Connected**).
+4. **Kirim Perintah ke ESP32 (Publish):**
+   - Masukkan topik: `ugm/mikon/kel[X]/cmd`
+   - Masukkan pesan pada kolom bawah, lalu klik ikon panah kirim.
+5. **Pantau Status dari ESP32 (Subscribe):**
+   - Klik **+ New Subscription**
+   - Masukkan topik: `ugm/mikon/kel[X]/status`, lalu klik **Confirm**.
 
 ---
 
-## F. REFERENSI KODE PROGRAM
+## E. TUGAS PRAKTIKUM: JALUR A (KELOMPOK LED)
 
-### 1. Program Utama (WiFi & MQTT PubSubClient)
+---
+
+### TAHAP 1: Kendali Diskrit ON/OFF
+
+**1. Rangkaian Hardware:**
+- Anoda LED $\rightarrow$ **GPIO 18** (melalui Resistor 220 $\Omega$).
+- Katoda LED $\rightarrow$ **GND**.
+
+**2. Kode Program Tugas 1:**
+
 ```cpp
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-const char* ssid = "NAMA_WIFI";
-const char* password = "PASSWORD_WIFI";
-const char* mqtt_server = "broker.hivemq.com";
+const char* ssid = "NAMA_HOTSPOT_HP";
+const char* password = "PASSWORD_HOTSPOT";
 
-WiFiClient espClient;
+const char* mqtt_server = "2d5cd8d3bcbd425a8865b60469b32931.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;
+const char* mqtt_user = "USERNAME_DARI_ASISTEN";
+const char* mqtt_pass = "PASSWORD_DARI_ASISTEN";
+
+const char* topic_cmd = "ugm/mikon/kel1/cmd";      // SESUAIKAN KELOMPOK
+const char* topic_status = "ugm/mikon/kel1/status";
+
+const int pinLED = 18;
+
+WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
+void callback(char* topic, byte* payload, unsigned int length) {
+  char message[32];
+  if (length >= sizeof(message)) length = sizeof(message) - 1;
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  Serial.print("Pesan masuk: ");
+  Serial.println(message);
+
+  if (strcmp(message, "ON") == 0) {
+    digitalWrite(pinLED, HIGH);
+  } else if (strcmp(message, "OFF") == 0) {
+    digitalWrite(pinLED, LOW);
+  }
+}
+
 void setup_wifi() {
-  Serial.print("Menghubungkan ke WiFi...");
+  Serial.print("Koneksi WiFi...");
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -110,122 +134,341 @@ void setup_wifi() {
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Menghubungkan ke MQTT...");
-    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
-    if (client.connect(clientId.c_str())) {
+    Serial.print("Koneksi MQTT...");
+    String clientId = "ESP32-LED-Kel-" + String(random(1000, 9999));
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println(" Terhubung!");
-      // Ganti topik sesuai nomor kelompok Anda:
-      client.subscribe("ugm/mikon/kel1/cmd");
-      client.publish("ugm/mikon/kel1/status", "ESP32 Online");
+      client.subscribe(topic_cmd);
+      client.publish(topic_status, "Tugas 1: Ready");
     } else {
-      Serial.print(" Gagal, rc=");
-      Serial.print(client.state());
       delay(3000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(pinLED, OUTPUT);
+  digitalWrite(pinLED, LOW);
+
+  setup_wifi();
+  espClient.setInsecure();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+}
+
+void loop() {
+  if (!client.connected()) reconnect();
+  client.loop();
+}
+```
+
+**3. Pengujian Tugas 1:**
+- Buka aplikasi MQTTX.
+- Publish `"ON"` $\rightarrow$ LED menyala.
+- Publish `"OFF"` $\rightarrow$ LED mati.
+
+---
+
+### TAHAP 2: Modifikasi ke Kendali PWM Dimming
+
+**1. Modifikasi Kode:**
+Gunakan rangkaian dari Tahap 1. Modifikasi program Tugas 1:
+
+1. Tambahkan konfigurasi PWM sebelum `setup()`:
+```cpp
+const int pwmChannel = 0;
+const int pwmFreq = 5000;
+const int pwmResolution = 8;
+```
+
+2. Ganti `pinMode(pinLED, OUTPUT);` di `setup()` menjadi:
+```cpp
+ledcSetup(pwmChannel, pwmFreq, pwmResolution);
+ledcAttachPin(pinLED, pwmChannel);
+ledcWrite(pwmChannel, 0);
+```
+
+3. Ubah fungsi `callback()` menjadi:
+```cpp
+void callback(char* topic, byte* payload, unsigned int length) {
+  char message[32];
+  if (length >= sizeof(message)) length = sizeof(message) - 1;
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  Serial.print("Pesan masuk: ");
+  Serial.println(message);
+
+  if (strcmp(message, "ON") == 0) {
+    ledcWrite(pwmChannel, 255);
+  } else if (strcmp(message, "OFF") == 0) {
+    ledcWrite(pwmChannel, 0);
+  } else {
+    int val = atoi(message);
+    if (val >= 0 && val <= 255) {
+      ledcWrite(pwmChannel, val);
     }
   }
 }
 ```
 
-### 2. Referensi Aktuator
-**a. Multi-LED & PWM**
+**2. Pengujian Tugas 2:**
+- Publish angka (contoh: `"50"`, `"128"`, `"255"`).
+- Pastikan tingkat kecerahan LED berubah sesuai nilai.
+
+### TAHAP 3: Integrasi Emergency Stop & Status Feedback
+
+**1. Penambahan Hardware:**
+- Pasang Push Button ke **GPIO 21** dengan resistor pull-down 10k $\Omega$ ke **GND**, dan kaki lainnya ke **3V3**.
+
+**2. Modifikasi Kode Tugas 3:**
+
+1. Tambahkan variabel pengaman:
 ```cpp
-const int pinLED1 = 18;
-const int pinLED2 = 19;
+const int pinBtn = 21;
+bool isEmergency = false;
+int currentPWM = 0;
+```
 
-void setupLED() {
-  pinMode(pinLED1, OUTPUT);
-  ledcAttach(pinLED2, 5000, 8); // PWM 5kHz, 8-bit (0-255)
+2. Tambahkan inisialisasi pin di `setup()`:
+```cpp
+pinMode(pinBtn, INPUT);
+```
+
+3. Tambahkan proteksi di awal fungsi `callback()`:
+```cpp
+if (isEmergency) {
+  Serial.println("Emergency Stop aktif!");
+  return;
 }
+```
 
-void kontrolLED(char* pesan) {
-  if (strcmp(pesan, "L1_ON") == 0) digitalWrite(pinLED1, HIGH);
-  else if (strcmp(pesan, "L1_OFF") == 0) digitalWrite(pinLED1, LOW);
+4. Tambahkan pembacaan tombol dan pengiriman status di `loop()`:
+```cpp
+int btn = digitalRead(pinBtn);
+static int lastBtn = LOW;
 
-  // Nilai numerik PWM
-  int val = atoi(pesan);
-  if (val >= 0 && val <= 255) {
-    ledcWrite(pinLED2, val);
+if (btn != lastBtn) {
+  lastBtn = btn;
+  if (btn == HIGH) {
+    isEmergency = true;
+    ledcWrite(pwmChannel, 0);
+    client.publish(topic_status, "ALERT: EMERGENCY STOP ON");
+  } else {
+    isEmergency = false;
+    ledcWrite(pwmChannel, currentPWM);
+    client.publish(topic_status, "STATUS: NORMAL");
   }
 }
 ```
 
-**b. Motor Servo**
-```cpp
-const int servoPin = 16;
+**3. Pengujian Tugas 3:**
+- Kirim `"200"` $\rightarrow$ LED menyala.
+- Tekan tombol $\rightarrow$ LED mati seketika dan muncul notifikasi `"ALERT: EMERGENCY STOP ON"`.
+- Kirim pesan baru saat tombol ditekan $\rightarrow$ Perintah diabaikan.
+- Lepas tombol $\rightarrow$ Status `"STATUS: NORMAL"` muncul dan LED menyala kembali.
 
-void setupServo() {
-  ledcAttach(servoPin, 50, 12); // 50 Hz, 12-bit
-}
+---
+
+## F. TUGAS PRAKTIKUM: JALUR B (KELOMPOK SERVO)
+
+---
+
+### TAHAP 1: Kendali Posisi Patokan Diskrit
+
+**1. Rangkaian Hardware:**
+- Sinyal Servo (Oranye/Kuning) $\rightarrow$ **GPIO 16**.
+- VCC Servo (Merah) $\rightarrow$ **5V / VIN**.
+- GND Servo (Cokelat/Hitam) $\rightarrow$ **GND**.
+
+**2. Kode Program Tugas 1:**
+
+```cpp
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+
+const char* ssid = "NAMA_HOTSPOT_HP";
+const char* password = "PASSWORD_HOTSPOT";
+
+const char* mqtt_server = "2d5cd8d3bcbd425a8865b60469b32931.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;
+const char* mqtt_user = "USERNAME_DARI_ASISTEN";
+const char* mqtt_pass = "PASSWORD_DARI_ASISTEN";
+
+const char* topic_cmd = "ugm/mikon/kel6/cmd";      // SESUAIKAN KELOMPOK
+const char* topic_status = "ugm/mikon/kel6/status";
+
+const int servoPin = 16;
+const int servoChannel = 0;
+const int servoFreq = 50;
+const int servoResolution = 12;
+
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
 
 void setServo(int angle) {
   angle = constrain(angle, 0, 180);
-  int duty = map(angle, 0, 180, 102, 512); // Duty cycle 0 - 180 derajat
-  ledcWrite(servoPin, duty);
+  int duty = map(angle, 0, 180, 102, 512);
+  ledcWrite(servoChannel, duty);
 }
-```
 
-### 3. Referensi Input Lokal & Status Feedback
-```cpp
-const int pinBtn = 21; // Push button (pull-down)
-const int pinPot = 34; // Pin ADC (GPIO 34 pada DevKit V1, atau GPIO 1-10 pada ESP32-S3)
+void callback(char* topic, byte* payload, unsigned int length) {
+  char message[32];
+  if (length >= sizeof(message)) length = sizeof(message) - 1;
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  Serial.print("Pesan masuk: ");
+  Serial.println(message);
+
+  if (strcmp(message, "MIN") == 0) {
+    setServo(0);
+  } else if (strcmp(message, "MID") == 0) {
+    setServo(90);
+  } else if (strcmp(message, "MAX") == 0) {
+    setServo(180);
+  }
+}
+
+void setup_wifi() {
+  Serial.print("Koneksi WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Terhubung!");
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Koneksi MQTT...");
+    String clientId = "ESP32-Servo-Kel-" + String(random(1000, 9999));
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
+      Serial.println(" Terhubung!");
+      client.subscribe(topic_cmd);
+      client.publish(topic_status, "Tugas 1: Ready");
+    } else {
+      delay(3000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  ledcSetup(servoChannel, servoFreq, servoResolution);
+  ledcAttachPin(servoPin, servoChannel);
+  setServo(90);
+
+  setup_wifi();
+  espClient.setInsecure();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+}
 
 void loop() {
   if (!client.connected()) reconnect();
   client.loop();
+}
+```
 
-  int btn = digitalRead(pinBtn);
-  int pot = analogRead(pinPot); // 0 - 4095
+**3. Pengujian Tugas 1:**
+- Buka aplikasi MQTTX.
+- Publish `"MIN"` $\rightarrow$ Servo bergerak ke 0°.
+- Publish `"MID"` $\rightarrow$ Servo bergerak ke 90°.
+- Publish `"MAX"` $\rightarrow$ Servo bergerak ke 180°.
+---
 
-  // Contoh event-driven feedback
-  static int lastBtn = LOW;
-  if (btn != lastBtn) {
-    lastBtn = btn;
-    if (btn == HIGH) client.publish("ugm/mikon/kel1/status", "ALERT: EMERGENCY STOP ON");
-    else client.publish("ugm/mikon/kel1/status", "STATUS: NORMAL");
+### TAHAP 2: Modifikasi ke Kendali Sudut Bebas
+
+**1. Modifikasi Kode:**
+Gunakan rangkaian dari Tahap 1. Modifikasi fungsi `callback()`:
+
+```cpp
+void callback(char* topic, byte* payload, unsigned int length) {
+  char message[32];
+  if (length >= sizeof(message)) length = sizeof(message) - 1;
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  Serial.print("Pesan masuk: ");
+  Serial.println(message);
+
+  if (strcmp(message, "MIN") == 0) {
+    setServo(0);
+  } else if (strcmp(message, "MID") == 0) {
+    setServo(90);
+  } else if (strcmp(message, "MAX") == 0) {
+    setServo(180);
+  } else {
+    int angle = atoi(message);
+    if (angle >= 0 && angle <= 180) {
+      setServo(angle);
+    }
   }
 }
 ```
 
----
-
-## G. TUGAS PRAKTIKUM
-
-### Tugas 1: Kendali Diskrit via MQTT (Dasar)
-1. Rangkai ESP32 dengan aktuator kelompok Anda di breadboard.
-2. Buat program agar ESP32 menerima perintah teks dari HiveMQ Web Client:
-   - **Kelompok LED (Kel 1, 2, 3):** Kirim perintah string untuk menyalakan/mematikan LED secara terpisah (misal: `"L1_ON"`, `"L1_OFF"`, `"ALL_ON"`, `"ALL_OFF"`).
-   - **Kelompok Servo (Kel 6 & 7):** Kirim perintah posisi patokan: Sudut 0° (`"MIN"`), 90° (`"MID"`), dan 180° (`"MAX"`).
-   - **Kelompok 4, 5, 8, 9, 10:** Uji penerimaan perintah ON/OFF atau posisi patokan awal aktuator.
-3. Tunjukkan respon aktuator secara *real-time* kepada asisten.
-
-### Tugas 2: Kendali Variabel via Payload Angka (Menengah)
-1. Modifikasi program untuk memproses payload berupa angka (`atoi`):
-   - **Kelompok LED PWM (Kel 4 & 5):** Terima angka `0` s.d. `255`. Atur intensitas 2 LED secara komplementer (LED 1 makin terang, LED 2 makin redup).
-   - **Kelompok Servo (Kel 8, 9, 10):** Terima angka sudut `0` s.d. `180`. Servo bergerak halus sesuai derajat yang dikirimkan.
-   - **Kelompok 1, 2, 3, 6, 7:** Tambahkan parameter angka untuk mengatur kecepatan kedipan LED atau kecepatan pergerakan servo.
-2. Amati pergerakan aktuator dan monitor nilainya di Serial Monitor.
-
-### Tugas 3: Hybrid Safety Interlock & Feedback Status (Lanjut)
-Integrasikan input fisik lokal (Push Button / Potensiometer 10k) sebagai pengaman yang memiliki prioritas lebih tinggi daripada perintah MQTT:
-
-1. **Kelompok dengan Push Button (Kel 1, 2, 3, 6, 7):**
-   - **Saat Tombol Ditekan (Kondisi Darurat):** Perintah MQTT diabaikan.
-     - Kel LED: Semua LED padam (atau strobo peringatan untuk Kel 3).
-     - Kel Servo: Servo terkunci paksa pada sudut 90°.
-     - Publish ke topik status: `"ALERT: EMERGENCY INTERLOCK ENGAGED"`.
-   - **Saat Tombol Dilepas:** Kendali MQTT pulih kembali. Publish status: `"STATUS: NORMAL MODE"`.
-
-2. **Kelompok dengan Potensiometer 10k (Kel 4, 5, 8, 9, 10):**
-   - **Kel 4 & 5 (LED Brightness Limiter):** Potensio membatasi batas maksimum PWM. Jika payload MQTT melebihi nilai batas potensio, potong nilai ke batas tersebut dan publish: `"WARNING: PWM CLAMPED"`.
-   - **Kel 8 & 9 (Servo Local vs Remote Selector):** 
-     - Potensio < 2000 $\rightarrow$ Remote Mode (posisi dikendalikan MQTT).
-     - Potensio $\ge$ 2000 $\rightarrow$ Local Manual Mode (posisi dikendalikan langsung oleh putaran potensio fisik; perintah MQTT diabaikan).
-     - Publish status saat mode berganti: `"MODE: MANUAL"` atau `"MODE: REMOTE"`.
-   - **Kel 10 (Servo Safety Range Limiter):** Potensio membatasi batas sudut maksimal yang boleh dicapai servo. Jika nilai MQTT melebihi batas ini, servo ditahan pada batas dan publish: `"WARNING: ANGLE CAPPED"`.
+**2. Pengujian Tugas 2:**
+- Publish angka sembarang (contoh: `"30"`, `"45"`, `"135"`).
+- Pastikan servo bergerak ke sudut yang diminta.
 
 ---
 
-## H. PERTANYAAN (KUIS)
-1. Mengapa protokol MQTT lebih hemat daya dan bandwidth dibanding HTTP polling dalam aplikasi kendali perangkat secara *real-time*?
-2. Mengapa tombol pengaman darurat (*Safety Interlock*) wajib diproses langsung di mikrokontroler lokal dan tidak boleh hanya mengandalkan tombol pada web dashboard?
-3. Apa akibatnya jika dua perangkat ESP32 menggunakan `ClientID` yang sama saat terhubung ke broker MQTT publik?
+### TAHAP 3: Integrasi Potensiometer & Manual Override
+
+**1. Penambahan Hardware:**
+- Kaki luar Potensiometer $\rightarrow$ **3V3** dan **GND**.
+- Kaki tengah Potensiometer $\rightarrow$ Pin ADC (**GPIO 34** untuk DevKit V1, atau **GPIO 4** untuk S3).
+
+**2. Modifikasi Kode Tugas 3:**
+
+1. Tambahkan deklarasi pin dan variabel:
+```cpp
+const int pinPot = 34;
+bool isManual = false;
+int currentAngle = 90;
+```
+
+2. Tambahkan proteksi di awal fungsi `callback()`:
+```cpp
+if (isManual) {
+  Serial.println("Mode Manual aktif!");
+  return;
+}
+```
+
+3. Tambahkan pembacaan ADC dan pemilih mode di `loop()`:
+```cpp
+int pot = analogRead(pinPot);
+bool manualTrigger = (pot >= 2000);
+static bool lastManualState = false;
+
+if (manualTrigger != lastManualState) {
+  lastManualState = manualTrigger;
+  isManual = manualTrigger;
+
+  if (isManual) {
+    client.publish(topic_status, "MODE: MANUAL OVERRIDE");
+  } else {
+    client.publish(topic_status, "MODE: REMOTE MQTT");
+    setServo(currentAngle);
+  }
+}
+
+if (isManual) {
+  int manualAngle = map(pot, 2000, 4095, 0, 180);
+  setServo(manualAngle);
+  delay(15);
+}
+```
+
+**3. Pengujian Tugas 3:**
+- Kirim `"45"` $\rightarrow$ Servo berada di 45°.
+- Putar potensiometer melebihi nilai tengah (ADC $\ge$ 2000) $\rightarrow$ Muncul pesan `"MODE: MANUAL OVERRIDE"`.
+- Putar potensiometer $\rightarrow$ Servo mengikuti putaran tangan.
+- Kirim pesan dari MQTTX $\rightarrow$ Perintah diabaikan.
+- Putar potensiometer kembali ke bawah $\rightarrow$ Muncul `"MODE: REMOTE MQTT"` dan kendali aplikasi kembali aktif.
