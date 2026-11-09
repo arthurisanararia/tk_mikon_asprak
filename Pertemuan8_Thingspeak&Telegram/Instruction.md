@@ -4,103 +4,76 @@
 ---
 
 ## A. TUJUAN
-1. Praktikan mampu mengonfigurasi ESP32 untuk mengirim data sensor ke platform cloud **ThingSpeak** dan memantau hasilnya dalam bentuk grafik (*monitoring*).
-2. Praktikan mampu membuat **Telegram Bot** menggunakan @BotFather serta mengendalikan aktuator (LED / Motor Servo) dan membaca data sensor melalui chat Telegram (*controlling*).
-3. Praktikan memahami perbedaan karakteristik kedua platform: ThingSpeak untuk **visualisasi data** dan Telegram untuk **kendali dua arah (bidirectional)**.
-
-> **Catatan Waktu:** Total waktu praktikum adalah **100 menit**. Karena itu, alur praktikum dirancang bertahap dari yang paling mudah ke yang lebih kompleks. Kelompok yang kebagian sensor digital **wajib** menggunakan kode template yang sudah disediakan dan hanya fokus pada pengujian, agar selesai tepat waktu.
+1. Mengonfigurasi ESP32 untuk mengirim data sensor ke **ThingSpeak** dan memantau hasilnya dalam bentuk grafik.
+2. Membuat **Telegram Bot** menggunakan @BotFather serta mengendalikan aktuator (LED / Motor Servo) dan membaca data sensor melalui chat Telegram.
+3. Memahami perbedaan karakteristik kedua platform: ThingSpeak untuk **monitoring** (satu arah) dan Telegram untuk **kendali** (dua arah).
 
 ---
 
 ## B. DASAR TEORI
 
-### 1. ThingSpeak
-ThingSpeak adalah platform analitik IoT berbasis web yang dikembangkan oleh MathWorks (pembuat MATLAB). ThingSpeak memungkinkan pengguna mengumpulkan, menganalisis, memvisualisasikan, dan bertindak berdasarkan data yang dikirim oleh perangkat yang terhubung. Fitur utamanya:
+### ThingSpeak
+ThingSpeak adalah platform IoT berbasis web untuk mengumpulkan dan memvisualisasikan data.
 
-1. **Pengumpulan Data:** Data dikirim dari perangkat IoT melalui protokol HTTP/MQTT ke sebuah **Channel**.
-2. **Analisis Data:** Mendukung kode MATLAB yang dijalankan langsung dari cloud untuk analisis *real-time*.
-3. **Visualisasi Data:** Menyediakan grafik, gauge, dan heatmap yang membantu memahami data.
-4. **Channel & Field:** Data diatur dalam channel dan field. Setiap channel bisa memiliki beberapa field (field1, field2, dst.), masing-masing menyimpan jenis data tertentu.
-5. **Write API Key:** Kunci yang dibutuhkan ESP32 untuk **menulis (mengirim)** data ke channel. Tanpa kunci ini, pengiriman data akan ditolak server.
+- **Channel & Field:** Data diatur dalam channel. Setiap channel memiliki beberapa field (field1, field2, dst.) untuk menyimpan jenis data yang berbeda.
+- **Write API Key:** Kunci yang dibutuhkan ESP32 untuk **mengirim** data ke channel.
 
-Arsitektur monitoring:
+### Telegram Bot
+Telegram Bot adalah akun Telegram yang dioperasikan oleh program. ESP32 secara berkala memeriksa pesan baru ke server Telegram. Jika ada perintah, ESP32 memprosesnya lalu membalas.
 
-```
-[ ESP32 + Sensor ] --- HTTP POST (Write API Key + data) ---> [ api.thingspeak.com ]
-                                                                    |
-                                                            Channel & Field1..N
-                                                                    v
-                                                          [ Grafik / Dashboard ]
-```
-
-### 2. Telegram Bot
-Telegram adalah aplikasi pesan instan berbasis cloud. Telegram menyediakan API yang kuat dan fleksibel untuk membuat **bot** — akun khusus yang dioperasikan oleh program, bukan manusia. Dalam konteks IoT, bot dapat digunakan untuk mengontrol dan memantau perangkat melalui pesan teks.
-
-Cara kerjanya sederhana: ESP32 secara berkala "bertanya" ke server Telegram (`api.telegram.org`) apakah ada pesan baru untuk bot tersebut. Jika ada, ESP32 memproses perintahnya (menyalakan LED, menggerakkan servo, membaca sensor) lalu membalas lewat `sendMessage`. Berbeda dengan ThingSpeak yang sifatnya satu arah (hanya mengirim data), Telegram bersifat **dua arah**: perintah masuk dan laporan keluar melalui satu jalur yang sama.
-
-Arsitektur kendali:
-
-```
-[ Telegram User ] --- perintah: "LED ON" ---> [ api.telegram.org ]
-                                                     ^
-                                                     |  (getNewMessage / sendMessage)
-                                                     v
-                                              [ ESP32 + Aktuator ]
-```
-
-> **Perbedaan singkat:** ThingSpeak = ESP32 **hanya mengirim** data ke cloud (monitoring). Telegram = ESP32 **mengirim dan menerima** pesan (monitoring + kendali).
+> **Perbedaan:** ThingSpeak = ESP32 hanya mengirim data (monitoring). Telegram = ESP32 mengirim dan menerima pesan (monitoring + kendali).
 
 ---
 
 ## C. ALAT DAN BAHAN
 
+> **Catatan Pin:** Praktikum ini bisa memakai **ESP32 DevKit V1** atau **ESP32-S3**. Hampir semua pin sama, kecuali **pin I2C** (SDA/SCL) untuk sensor — lihat tabel di tiap rangkaian. Kode yang diberikan sudah otomatis memilih pin yang benar sesuai board kalian.
+
 1. ESP32 DevKit V1 / ESP32-S3 (1 unit)
 2. Kabel Data USB Micro / Type C (1 pcs)
 3. Breadboard & Kabel Jumper
 4. Laptop / PC terpasang VSCode + PlatformIO (Hotspot HP **2.4 GHz**)
-5. Akun **ThingSpeak** (https://thingspeak.com) dan **Telegram** (HP/laptop) — dibuat saat praktikum
-6. **Komponen Jalur A (Kelompok 1–10):**
+5. **Komponen A :**
    - LED 5mm (1 pcs) & Resistor 220 $\Omega$ (1 pcs)
-   - **Sensor SHT4x** (atau BME280) — sensor suhu & kelembapan digital (I2C)
-7. **Komponen Jalur B (Kelompok 11–20):**
+   - Sensor BME280
+6. **Komponen B :**
    - Motor Servo SG90 (1 pcs)
-   - **Sensor INA219** — sensor arus & tegangan digital (I2C)
+   - Sensor INA219
+
+### Tabel Pin (DevKit V1 vs ESP32-S3)
+
+| Fungsi | ESP32 DevKit V1 | ESP32-S3 |
+|--------|-----------------|----------|
+| LED (Komponen A) | GPIO 18 | GPIO 18 |
+| Servo Sinyal (Komponen B) | GPIO 16 | GPIO 16 |
+| **I2C SDA** (sensor) | GPIO 21 | **GPIO 8** |
+| **I2C SCL** (sensor) | GPIO 22 | **GPIO 9** |
 
 ---
 
-## D. SETUP PLATFORM (SEMUA KELOMPOK, ± 20 MENIT)
-
-Kerjakan bersama-sama sebelum masuk ke tugas jalur masing-masing.
+## D. SETUP PLATFORM
 
 ### 1. Setup ThingSpeak
 
-1. Buka https://thingspeak.com lalu klik **Get Started For Free** dan buat akun (Sign up).
-2. Setelah login, pilih menu **Channels > New Channel**, isi:
+1. Buka https://thingspeak.com, klik **Get Started For Free**, buat akun.
+2. Pilih menu **Channels > New Channel**, isi:
    - **Name:** `Kelompok [X] - Mikon`
-   - **Description:** bebas, misal: `Monitoring Praktikum Mikrokontroler`
-   - Centang **Field 1** dan isi label sesuai sensor kelompok kalian:
-     - Jalur A: `Suhu (C)` dan centang juga **Field 2**: `Kelembapan (%)`
-     - Jalur B: `Arus (mA)` dan centang juga **Field 2**: `Tegangan (V)`
+   - Centang **Field 1** dan **Field 2**:
+     - Komponen A: `Suhu (C)` dan `Kelembapan (%)`
+     - Komponen B: `Arus (mA)` dan `Tegangan (V)`
 3. Klik **Save Channel**.
-4. Buka tab **API Keys > Write API Key**, salin kunci tersebut (jangan sampai hilang, ini yang dipakai di kode).
-
-> **Penting:** ThingSpeak hanya mengizinkan pembaruan data **minimal setiap 15 detik** untuk akun gratis. Pengiriman lebih cepat dari itu akan ditolak server, jadi di kode nanti digunakan interval 20 detik.
+4. Buka tab **API Keys > Write API Key**, salin kunci tersebut.
 
 ### 2. Setup Telegram Bot
 
-1. Buka aplikasi Telegram, cari **@BotFather** (akun bot resmi dengan tanda centang biru), lalu tekan **Start**.
-2. Kirim pesan `/newbot`.
-3. BotFather meminta **nama** bot — kirim nama yang kalian inginkan (misal: `Kelompok 1 Mikon Bot`).
-4. BotFather meminta **username** bot — kirim username unik yang diakhiri kata `bot` (misal: `kelompok1_mikon_bot`).
-5. BotFather akan membalas dengan:
-   - **Link bot** kalian (misal: `t.me/kelompok1_mikon_bot`)
-   - **Token** (format mirip: `7123456789:AAH9xQwERTYuiopASDFghjklZXcvbnM123`) — **salin dan simpan token ini**, ini yang dipakai di kode.
-6. **Langkah wajib:** buka link bot kalian, tekan **Start**, lalu kirim satu pesan apa pun (misal: `halo`). Ini agar chat kalian terdaftar di server Telegram dan pesan bisa terbaca oleh ESP32.
-7. Untuk mendapatkan **Chat ID** kalian (dibutuhkan di Tahap 3), cari bot **@userinfobot**, tekan Start, lalu bot itu membalas dengan `Id:` berupa angka. Catat angkanya.
+1. Buka aplikasi Telegram, cari **@BotFather** (centang biru), tekan **Start**.
+2. Kirim `/newbot`.
+3. Masukkan **nama** bot: `Kelompok [X] Mikon Bot`.
+4. Masukkan **username** bot: `kelompok[X]_mikon_bot`.
+5. BotFather membalas dengan **Token** — salin dan simpan.
+6. Buka link bot kalian, tekan **Start**, lalu kirim satu pesan (`halo`).
 
-### 3. Instalasi Library (PlatformIO)
-
-Buka `platformio.ini` pada project kalian, lalu tambahkan dua baris library berikut pada bagian `lib_deps`:
+### 3. Instalasi Library (platformio.ini)
 
 ```ini
 [env:esp32doit-devkit-v1]
@@ -111,43 +84,33 @@ monitor_speed = 115200
 lib_deps =
     bblanchon/ArduinoJson@^7.4.2
     shurillu/CTBot@2.1.14
-    adafruit/Adafruit SHT4x Library@^1.0.4   ; HANYA Jalur A (SHT4x)
-    adafruit/Adafruit INA219@^1.2.3          ; HANYA Jalur B (INA219)
+    adafruit/Adafruit BME280 Library@^2.2.4
+    adafruit/Adafruit Unified Sensor@^1.1.14
+    adafruit/Adafruit INA219@^1.2.3
 ```
 
-- **CTBot** adalah library Telegram Bot untuk ESP32/ESP8266. Library ini butuh **ArduinoJson** untuk memproses pesan JSON dari server Telegram.
-- **Adafruit SHT4x** dan **Adafruit INA219** adalah library driver sensor I2C masing-masing jalur.
-- Jalur A (BME280) mengganti baris sensor dengan `adafruit/Adafruit BME280 Library@^2.2.4` dan menambahkan `adafruit/Adafruit Unified Sensor@^1.1.14`.
-- Sesuaikan nama env dan board dengan yang kalian gunakan (misal board S3).
+> **Jika memakai ESP32-S3:** cukup ganti baris `board` menjadi `board = esp32-s3-devkitc-1` (board lain seperti `esp32-s3-devkitm-1` juga bisa). Baris library tetap sama.
 
 ---
 
 ## E. TUGAS PRAKTIKUM
 
-Kedua jalur mengerjakan **3 tahap yang sama strukturnya** dengan tingkat kesulitan bertingkat:
-
-| Tahap | Platform | Fokus | Estimasi |
-|-------|----------|-------|----------|
-| 1 | ThingSpeak | Kirim data sensor ke cloud, pantau grafik | ± 15 menit |
-| 2 | Telegram | Kendali aktuator ON/OFF / POSISI lewat chat | ± 20 menit |
-| 3 | Telegram | Minta bot membaca sensor saat diminta (dua arah) | ± 20 menit |
-
 ---
 
-# JALUR A — Kelompok 1–10 (Sensor Suhu & Kelembapan + LED)
+# KOMPONEN A (BME280 + LED)
 
 ---
 
 ### TAHAP 1: Monitoring Suhu & Kelembapan ke ThingSpeak
 
 **1. Rangkaian Hardware:**
-- Anoda LED $\rightarrow$ **GPIO 18** (melalui Resistor 220 $\Omega$). *(Dipakai lagi di Tahap 2)*
+- Anoda LED $\rightarrow$ **GPIO 18** (melalui Resistor 220 $\Omega$).
 - Katoda LED $\rightarrow$ **GND**.
-- Sensor SHT4x:
-  - **VIN/VCC** $\rightarrow$ **3V3**
+- Sensor BME280:
+  - **VIN** $\rightarrow$ **3V3**
   - **GND** $\rightarrow$ **GND**
-  - **SDA** $\rightarrow$ **GPIO 21**
-  - **SCL** $\rightarrow$ **GPIO 22**
+  - **SDA** $\rightarrow$ **GPIO 21** (DevKit V1) / **GPIO 8** (S3)
+  - **SCL** $\rightarrow$ **GPIO 22** (DevKit V1) / **GPIO 9** (S3)
 
 **2. Kode Program Tugas 1:**
 
@@ -156,9 +119,9 @@ Kedua jalur mengerjakan **3 tahap yang sama strukturnya** dengan tingkat kesulit
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <Wire.h>
-#include <Adafruit_SHT4x.h>
+#include <Adafruit_BME280.h>
 
-Adafruit_SHT4x sht4 = Adafruit_SHT4x();
+Adafruit_BME280 bme;
 
 const char* ssid = "NAMA_HOTSPOT_HP";
 const char* password = "PASSWORD_HOTSPOT";
@@ -166,7 +129,7 @@ const char* password = "PASSWORD_HOTSPOT";
 const char* server = "api.thingspeak.com";
 String apiKey = "WRITE_API_KEY_THINGSPEAK";  // GANTI dengan API Key kalian
 
-const unsigned long intervalThingspeak = 20000;  // 20 detik (min 15 detik)
+const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
 
 WiFiClient client;
@@ -174,9 +137,8 @@ WiFiClient client;
 void setup() {
   Serial.begin(115200);
 
-  Wire.begin();  // SDA = 21, SCL = 22 (default ESP32)
-  sht4.begin();
-  sht4.setPrecision(SHT4X_HIGH_PRECISION);
+  Wire.begin();
+  bme.begin(0x76);
 
   Serial.print("Koneksi WiFi");
   WiFi.mode(WIFI_STA);
@@ -192,18 +154,18 @@ void loop() {
   if (millis() - lastSend >= intervalThingspeak) {
     lastSend = millis();
 
-    sensors_event_t hum, temp;
-    sht4.getEvent(&hum, &temp);
+    float suhu = bme.readTemperature();
+    float kelembapan = bme.readHumidity();
 
     Serial.print("Suhu: ");
-    Serial.print(temp.temperature);
+    Serial.print(suhu);
     Serial.print(" C | Kelembapan: ");
-    Serial.println(hum.relative_humidity);
+    Serial.println(kelembapan);
 
     if (client.connect(server, 80)) {
       String postStr = apiKey;
-      postStr += "&field1=" + String(temp.temperature);
-      postStr += "&field2=" + String(hum.relative_humidity);
+      postStr += "&field1=" + String(suhu);
+      postStr += "&field2=" + String(kelembapan);
 
       client.print("POST /update HTTP/1.1\n");
       client.print("Host: api.thingspeak.com\n");
@@ -224,16 +186,15 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 1:**
-- Upload kode (ganti `ssid`, `password`, dan `apiKey` terlebih dahulu).
-- Buka Serial Monitor $\rightarrow$ pastikan nilai suhu & kelembapan tercetak dan muncul tulisan `Data terkirim ke ThingSpeak!`.
-- Buka halaman channel di ThingSpeak $\rightarrow$ tab **Private View** $\rightarrow$ grafik Field 1 dan Field 2 mulai terisi titik data setiap 20 detik.
-- **Coba juga:** tiup/hangatkan sensor dengan tangan dan amati grafik berubah naik.
+- Ganti `ssid`, `password`, dan `apiKey`, lalu upload.
+- Buka Serial Monitor (baudrate 115200), pastikan nilai suhu & kelembapan tercetak.
+- Buka channel ThingSpeak $\rightarrow$ tab **Private View** $\rightarrow$ grafik Field 1 dan Field 2 terisi setiap 20 detik.
 
 ---
 
 ### TAHAP 2: Kendali LED via Telegram Bot
 
-**1. Penambahan Hardware:** tidak ada, rangkaian LED dari Tahap 1 tetap terpasang.
+**1. Rangkaian:** tetap seperti Tahap 1.
 
 **2. Kode Program Tugas 2:**
 
@@ -255,18 +216,13 @@ void setup() {
   pinMode(pinLED, OUTPUT);
   digitalWrite(pinLED, LOW);
 
-  Serial.println("Connecting WiFi...");
-  if (myBot.wifiConnect(ssid, pass))
-    Serial.println("WiFi OK");
-  else
-    Serial.println("WiFi GAGAL!");
-
+  myBot.wifiConnect(ssid, pass);
   myBot.setTelegramToken(token);
 
   if (myBot.testConnection())
-    Serial.println("Koneksi Telegram OK");
+    Serial.println("Telegram OK");
   else
-    Serial.println("Koneksi Telegram GAGAL");
+    Serial.println("Telegram GAGAL");
 }
 
 void loop() {
@@ -277,14 +233,12 @@ void loop() {
 
     if (msg.text.equalsIgnoreCase("LED ON")) {
       digitalWrite(pinLED, HIGH);
-      myBot.sendMessage(msg.sender.id, "LED is now ON");
+      myBot.sendMessage(msg.sender.id, "LED menyala");
     } else if (msg.text.equalsIgnoreCase("LED OFF")) {
       digitalWrite(pinLED, LOW);
-      myBot.sendMessage(msg.sender.id, "LED is now OFF");
+      myBot.sendMessage(msg.sender.id, "LED mati");
     } else {
-      String reply = (String)"Halo " + msg.sender.username +
-                     (String)"! Kirim LED ON atau LED OFF.";
-      myBot.sendMessage(msg.sender.id, reply);
+      myBot.sendMessage(msg.sender.id, "Kirim LED ON atau LED OFF");
     }
   }
   delay(500);
@@ -292,19 +246,17 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 2:**
-- Upload kode (ganti `ssid`, `pass`, dan `token`).
-- Buka chat bot kalian di Telegram, kirim `LED ON` $\rightarrow$ LED menyala dan bot membalas `LED is now ON`.
-- Kirim `LED OFF` $\rightarrow$ LED mati dan bot membalas `LED is now OFF`.
-- Kirim pesan sembarang (misal `tes`) $\rightarrow$ bot membalas pesan panduan.
-- Perhatikan bahwa perintah **tidak case-sensitive** karena memakai `equalsIgnoreCase()` — coba ketik `led on` huruf kecil semua.
+- Ganti `ssid`, `pass`, dan `token`, lalu upload.
+- Kirim `LED ON` ke bot $\rightarrow$ LED menyala, bot membalas `LED menyala`.
+- Kirim `LED OFF` $\rightarrow$ LED mati, bot membalas `LED mati`.
 
 ---
 
-### TAHAP 3: Bot Membaca Sensor & Kendali Gabungan
+### TAHAP 3: Bot Baca Sensor + Kendali Gabungan
 
-Sekarang gabungkan Tahap 1 + Tahap 2 menjadi satu program utuh: bot bisa mengendalikan LED **sekaligus** melaporkan bacaan sensor saat diminta.
+Gabungkan Tahap 1 dan Tahap 2. Bot bisa mengendalikan LED **dan** melaporkan bacaan sensor saat diminta. Data tetap mengalir ke ThingSpeak di latar belakang.
 
-**1. Hardware:** rangkaian penuh dari Tahap 1 (LED + sensor SHT4x).
+**1. Rangkaian:** tetap seperti Tahap 1 (LED + BME280).
 
 **2. Kode Program Tugas 3:**
 
@@ -313,10 +265,10 @@ Sekarang gabungkan Tahap 1 + Tahap 2 menjadi satu program utuh: bot bisa mengend
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <Wire.h>
-#include <Adafruit_SHT4x.h>
+#include <Adafruit_BME280.h>
 #include <CTBot.h>
 
-Adafruit_SHT4x sht4 = Adafruit_SHT4x();
+Adafruit_BME280 bme;
 CTBot myBot;
 
 String ssid   = "NAMA_HOTSPOT_HP";
@@ -355,29 +307,21 @@ void setup() {
   digitalWrite(pinLED, LOW);
 
   Wire.begin();
-  sht4.begin();
-  sht4.setPrecision(SHT4X_HIGH_PRECISION);
+  bme.begin(0x76);
 
-  Serial.println("Connecting WiFi...");
-  if (myBot.wifiConnect(ssid, pass))
-    Serial.println("WiFi OK");
-  else
-    Serial.println("WiFi GAGAL!");
-
+  myBot.wifiConnect(ssid, pass);
   myBot.setTelegramToken(token);
   Serial.println(myBot.testConnection() ? "Telegram OK" : "Telegram GAGAL");
 }
 
 void loop() {
-  // 1. Kirim data sensor ke ThingSpeak tiap 20 detik (non-blocking)
   if (millis() - lastSend >= intervalThingspeak) {
     lastSend = millis();
-    sensors_event_t hum, temp;
-    sht4.getEvent(&hum, &temp);
-    kirimThingspeak(temp.temperature, hum.relative_humidity);
+    float suhu = bme.readTemperature();
+    float kelembapan = bme.readHumidity();
+    kirimThingspeak(suhu, kelembapan);
   }
 
-  // 2. Terima & balas pesan Telegram
   TBMessage msg;
   if (myBot.getNewMessage(msg)) {
     Serial.print("Pesan masuk: ");
@@ -385,25 +329,20 @@ void loop() {
 
     if (msg.text.equalsIgnoreCase("LED ON")) {
       digitalWrite(pinLED, HIGH);
-      myBot.sendMessage(msg.sender.id, "LED is now ON");
+      myBot.sendMessage(msg.sender.id, "LED menyala");
     } else if (msg.text.equalsIgnoreCase("LED OFF")) {
       digitalWrite(pinLED, LOW);
-      myBot.sendMessage(msg.sender.id, "LED is now OFF");
+      myBot.sendMessage(msg.sender.id, "LED mati");
     } else if (msg.text.equalsIgnoreCase("BACA SUHU")) {
-      sensors_event_t hum, temp;
-      sht4.getEvent(&hum, &temp);
-      String reply = "Suhu: " + String(temp.temperature, 1) + "*C";
+      float suhu = bme.readTemperature();
+      String reply = "Suhu: " + String(suhu, 1) + " C";
       myBot.sendMessage(msg.sender.id, reply);
     } else if (msg.text.equalsIgnoreCase("BACA KELEMBAPAN")) {
-      sensors_event_t hum, temp;
-      sht4.getEvent(&hum, &temp);
-      String reply = "Kelembapan: " + String(hum.relative_humidity, 0) + "%";
+      float kelembapan = bme.readHumidity();
+      String reply = "Kelembapan: " + String(kelembapan, 0) + " %";
       myBot.sendMessage(msg.sender.id, reply);
     } else {
-      String reply = "Perintah dikenal:\n"
-                     "- LED ON / LED OFF\n"
-                     "- BACA SUHU\n"
-                     "- BACA KELEMBAPAN";
+      String reply = "Perintah: LED ON / LED OFF\nBACA SUHU / BACA KELEMBAPAN";
       myBot.sendMessage(msg.sender.id, reply);
     }
   }
@@ -412,15 +351,15 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 3:**
-- Kirim `BACA SUHU` $\rightarrow$ bot membalas format `Suhu: [suhu]*C` (contoh: `Suhu: 30.4*C`).
-- Kirim `BACA KELEMBAPAN` $\rightarrow$ bot membalas format `Kelembapan: [kelembapan]%` (contoh: `Kelembapan: 65%`).
-- Kirim pesan selain itu $\rightarrow$ bot membalas daftar perintah yang tersedia.
-- Kirim `LED ON` / `LED OFF` $\rightarrow$ LED tetap bereaksi, **sekaligus** pastikan grafik ThingSpeak terus berjalan di latar belakang tanpa terputus.
-- Amati Serial Monitor: setiap 20 detik muncul `>> ThingSpeak terkirim` walau tidak ada aktivitas Telegram.
+- Kirim `BACA SUHU` $\rightarrow$ bot membalas `Suhu: [suhu] C`.
+- Kirim `BACA KELEMBAPAN` $\rightarrow$ bot membalas `Kelembapan: [kelembapan] %`.
+- Kirim `LED ON` / `LED OFF` $\rightarrow$ LED tetap bereaksi.
+- Amati Serial Monitor: setiap 20 detik muncul `>> ThingSpeak terkirim`.
+- Buka ThingSpeak: grafik tetap terisi walau tidak ada aktivitas Telegram.
 
 ---
 
-# JALUR B — Kelompok 11–20 (Sensor Arus & Tegangan + Motor Servo)
+# KOMPONEN B (INA219 + Motor Servo)
 
 ---
 
@@ -428,15 +367,15 @@ void loop() {
 
 **1. Rangkaian Hardware:**
 - Motor Servo SG90:
-  - Sinyal (kuning/oranye) $\rightarrow$ **GPIO 16**. *(Dipakai lagi di Tahap 2)*
-  - VCC (merah) $\rightarrow$ **5V / VIN**.
-  - GND (cokelat/hitam) $\rightarrow$ **GND**.
+  - Sinyal (kuning/oranye) $\rightarrow$ **GPIO 16**
+  - VCC (merah) $\rightarrow$ **5V / VIN**
+  - GND (cokelat/hitam) $\rightarrow$ **GND**
 - Sensor INA219:
-  - **VIN/VCC** $\rightarrow$ **3V3**
+  - **VIN** $\rightarrow$ **3V3**
   - **GND** $\rightarrow$ **GND**
-  - **SDA** $\rightarrow$ **GPIO 21**
-  - **SCL** $\rightarrow$ **GPIO 22**
-  - **VIN+** dan **VIN-** disambung seri dengan jalur beban yang mau diukur arusnya (kalau tidak ada beban, cukup hubungkan singkat VIN+ ke VIN- agar terbaca arus mendekati 0 dan tegangan bus).
+  - **SDA** $\rightarrow$ **GPIO 21** (DevKit V1) / **GPIO 8** (S3)
+  - **SCL** $\rightarrow$ **GPIO 22** (DevKit V1) / **GPIO 9** (S3)
+  - **VIN+** dan **VIN-** $\rightarrow$ hubungkan singkat (agar terbaca tegangan bus dan arus ~0 mA).
 
 **2. Kode Program Tugas 1:**
 
@@ -455,7 +394,7 @@ const char* password = "PASSWORD_HOTSPOT";
 const char* server = "api.thingspeak.com";
 String apiKey = "WRITE_API_KEY_THINGSPEAK";  // GANTI dengan API Key kalian
 
-const unsigned long intervalThingspeak = 20000;  // 20 detik (min 15 detik)
+const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
 
 WiFiClient client;
@@ -463,9 +402,8 @@ WiFiClient client;
 void setup() {
   Serial.begin(115200);
 
-  Wire.begin();  // SDA = 21, SCL = 22 (default ESP32)
+  Wire.begin();
   ina219.begin();
-  Serial.println("INA219 OK");
 
   Serial.print("Koneksi WiFi");
   WiFi.mode(WIFI_STA);
@@ -513,16 +451,15 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 1:**
-- Upload kode (ganti `ssid`, `password`, dan `apiKey`).
-- Buka Serial Monitor $\rightarrow$ pastikan nilai arus & tegangan tercetak dan muncul tulisan `Data terkirim ke ThingSpeak!`.
-- Buka halaman channel di ThingSpeak $\rightarrow$ tab **Private View** $\rightarrow$ grafik Field 1 dan Field 2 mulai terisi titik data setiap 20 detik.
-- **Coba juga:** geser/ganggu sambungan VIN+ dan VIN- dan amati grafik arus berubah.
+- Ganti `ssid`, `password`, dan `apiKey`, lalu upload.
+- Buka Serial Monitor, pastikan nilai arus & tegangan tercetak.
+- Buka channel ThingSpeak $\rightarrow$ tab **Private View** $\rightarrow$ grafik Field 1 dan Field 2 terisi setiap 20 detik.
 
 ---
 
 ### TAHAP 2: Kendali Servo via Telegram Bot
 
-**1. Penambahan Hardware:** tidak ada, rangkaian servo dari Tahap 1 tetap terpasang.
+**1. Rangkaian:** tetap seperti Tahap 1.
 
 **2. Kode Program Tugas 2:**
 
@@ -552,20 +489,15 @@ void setup() {
   Serial.begin(115200);
   ledcSetup(servoChannel, servoFreq, servoResolution);
   ledcAttachPin(servoPin, servoChannel);
-  setServo(90);  // posisi awal tengah
+  setServo(90);
 
-  Serial.println("Connecting WiFi...");
-  if (myBot.wifiConnect(ssid, pass))
-    Serial.println("WiFi OK");
-  else
-    Serial.println("WiFi GAGAL!");
-
+  myBot.wifiConnect(ssid, pass);
   myBot.setTelegramToken(token);
 
   if (myBot.testConnection())
-    Serial.println("Koneksi Telegram OK");
+    Serial.println("Telegram OK");
   else
-    Serial.println("Koneksi Telegram GAGAL");
+    Serial.println("Telegram GAGAL");
 }
 
 void loop() {
@@ -599,18 +531,17 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 2:**
-- Upload kode (ganti `ssid`, `pass`, dan `token`).
-- Kirim `MIN` $\rightarrow$ servo ke 0°, `MID` $\rightarrow$ servo ke 90°, `MAX` $\rightarrow$ servo ke 180°.
-- Kirim angka sembarang (contoh: `30`, `45`, `135`) $\rightarrow$ servo bergerak ke sudut yang diminta.
-- Kirim pesan yang bukan angka/posisi (misal `halo`) $\rightarrow$ bot membalas daftar perintah.
+- Ganti `ssid`, `pass`, dan `token`, lalu upload.
+- Kirim `MIN` $\rightarrow$ servo ke 0°, `MID` $\rightarrow$ 90°, `MAX` $\rightarrow$ 180°.
+- Kirim angka (contoh: `45`, `135`) $\rightarrow$ servo bergerak ke sudut yang diminta.
 
 ---
 
-### TAHAP 3: Bot Membaca Sensor & Kendali Gabungan
+### TAHAP 3: Bot Baca Sensor + Kendali Gabungan
 
-Gabungkan Tahap 1 + Tahap 2 menjadi satu program utuh: bot bisa mengendalikan servo **sekaligus** melaporkan bacaan sensor INA219 saat diminta, dan data tetap mengalir ke ThingSpeak.
+Gabungkan Tahap 1 dan Tahap 2. Bot bisa mengendalikan servo **dan** melaporkan bacaan sensor INA219 saat diminta. Data tetap mengalir ke ThingSpeak.
 
-**1. Hardware:** rangkaian penuh dari Tahap 1 (servo + sensor INA219).
+**1. Rangkaian:** tetap seperti Tahap 1 (servo + INA219).
 
 **2. Kode Program Tugas 3:**
 
@@ -674,18 +605,12 @@ void setup() {
   Wire.begin();
   ina219.begin();
 
-  Serial.println("Connecting WiFi...");
-  if (myBot.wifiConnect(ssid, pass))
-    Serial.println("WiFi OK");
-  else
-    Serial.println("WiFi GAGAL!");
-
+  myBot.wifiConnect(ssid, pass);
   myBot.setTelegramToken(token);
   Serial.println(myBot.testConnection() ? "Telegram OK" : "Telegram GAGAL");
 }
 
 void loop() {
-  // 1. Kirim data sensor ke ThingSpeak tiap 20 detik (non-blocking)
   if (millis() - lastSend >= intervalThingspeak) {
     lastSend = millis();
     float arus_mA = ina219.getCurrent_mA();
@@ -693,7 +618,6 @@ void loop() {
     kirimThingspeak(arus_mA, tegangan_V);
   }
 
-  // 2. Terima & balas pesan Telegram
   TBMessage msg;
   if (myBot.getNewMessage(msg)) {
     Serial.print("Pesan masuk: ");
@@ -723,10 +647,7 @@ void loop() {
         String reply = "Servo ke " + String(angle) + " derajat";
         myBot.sendMessage(msg.sender.id, reply);
       } else {
-        String reply = "Perintah dikenal:\n"
-                       "- MIN / MID / MAX / angka 0-180\n"
-                       "- BACA ARUS\n"
-                       "- BACA TEGANGAN";
+        String reply = "Perintah: MIN / MID / MAX / angka 0-180\nBACA ARUS / BACA TEGANGAN";
         myBot.sendMessage(msg.sender.id, reply);
       }
     }
@@ -736,29 +657,8 @@ void loop() {
 ```
 
 **3. Pengujian Tugas 3:**
-- Kirim `BACA ARUS` $\rightarrow$ bot membalas format `Arus: [arus] mA` (contoh: `Arus: 12.5 mA`).
-- Kirim `BACA TEGANGAN` $\rightarrow$ bot membalas format `Tegangan: [tegangan] V` (contoh: `Tegangan: 3.28 V`).
-- Kirim pesan selain itu $\rightarrow$ bot membalas daftar perintah yang tersedia.
-- Kirim `MIN` / `MID` / `MAX` / angka $\rightarrow$ servo tetap bereaksi, **sekaligus** pastikan grafik ThingSpeak terus berjalan di latar belakang tanpa terputus.
-- Amati Serial Monitor: setiap 20 detik muncul `>> ThingSpeak terkirim` walau tidak ada aktivitas Telegram.
-
----
-
-## F. TIPS ANTISIPASI WAKTU (100 MENIT)
-
-1. **Jangan ubah kode lebih dari yang diminta.** Semua kode di atas sudah siap pakai — cukup ganti `ssid`, `password`, `apiKey`, dan `token`.
-2. Kerjakan **tahap berurutan**, jangan lompat. Tahap 1 dan 2 saling menopang Tahap 3.
-3. Jika Serial Monitor menampilkan karakter aneh, pastikan `monitor_speed = 115200` sudah ada di `platformio.ini`.
-4. Jika Telegram tidak membalas:
-   - Pastikan sudah menekan **Start** di chat bot dan mengirim minimal satu pesan.
-   - Cek token di Serial saat `testConnection` — jika `Telegram GAGAL`, biasanya token salah atau hotspot tidak memberi akses internet.
-5. Jika ThingSpeak grafik kosong: cek Write API Key, dan pastikan interval pengiriman **≥ 15 detik**.
-6. Sensor I2C tidak terdeteksi (nilai nol terus): periksa kabel SDA/SCL tidak tertukar, dan pastikan board mendapat 3V3 (bukan 5V untuk pin VIN sensor).
-
-## G. KUIS
-
-1. Apa kegunaan **Write API Key** pada sistem ThingSpeak ini? Apa yang terjadi jika kunci tersebut salah diketik di program?
-2. Dalam fitur ThingSpeak terdapat view **public** dan **private**. Jelaskan perbedaan di antara keduanya!
-3. Apa perbedaan karakteristik penggunaan **ThingSpeak** dan **Telegram Bot** sebagai antarmuka IoT? (Petunjuk: arah aliran data — satu arah atau dua arah, serta format informasi yang dikirim.)
-4. Mengapa penting menggunakan **HTTPS** saat berkomunikasi dengan API Telegram Bot?
-5. Pada kode Tahap 3, pengiriman ThingSpeak menggunakan `millis()` (non-blocking) alih-alih `delay(20000)`. Menurut kalian, apa yang akan terjadi pada respons Telegram bot jika kita tetap memakai `delay(20000)` di dalam `loop()`?
+- Kirim `BACA ARUS` $\rightarrow$ bot membalas `Arus: [arus] mA`.
+- Kirim `BACA TEGANGAN` $\rightarrow$ bot membalas `Tegangan: [tegangan] V`.
+- Kirim `MIN` / `MID` / `MAX` / angka $\rightarrow$ servo tetap bereaksi.
+- Amati Serial Monitor: setiap 20 detik muncul `>> ThingSpeak terkirim`.
+- Buka ThingSpeak: grafik tetap terisi walau tidak ada aktivitas Telegram.
