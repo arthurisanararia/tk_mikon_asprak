@@ -372,7 +372,7 @@ void loop() {
   - **GND** $\rightarrow$ **GND**
   - **SDA** $\rightarrow$ **GPIO 21** (DevKit V1) / **GPIO 8** (S3)
   - **SCL** $\rightarrow$ **GPIO 22** (DevKit V1) / **GPIO 9** (S3)
-  - **VIN+** dan **VIN-** $\rightarrow$ hubungkan singkat (agar terbaca tegangan bus dan arus ~0 mA).
+  - **VIN+** dan **VIN-** $\rightarrow$ diletakkan di tengah-tengah jalur signal (agar terbaca tegangan dan arus sinyal ke servo).
 
 **2. Kode Program Tugas 1:**
 
