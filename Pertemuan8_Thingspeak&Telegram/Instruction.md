@@ -66,12 +66,18 @@ Telegram Bot adalah akun Telegram yang dioperasikan oleh program. ESP32 secara b
 
 ### 2. Setup Telegram Bot
 
-1. Buka aplikasi Telegram, cari **@BotFather** (centang biru), tekan **Start**.
-2. Kirim `/newbot`.
-3. Masukkan **nama** bot: `Kelompok [X] Mikon Bot`.
-4. Masukkan **username** bot: `kelompok[X]_mikon_bot`.
-5. BotFather membalas dengan **Token** — salin dan simpan.
-6. Buka link bot kalian, tekan **Start**, lalu kirim satu pesan (`halo`).
+1. Buka aplikasi Telegram, cari **@BotFather** (akun resmi dengan centang biru), lalu tekan **Start**.
+2. Kirim pesan `/newbot` untuk membuat bot baru.
+3. BotFather meminta **nama** bot — kirim: `Kelompok [X] Mikon Bot` (nama bebas, boleh pakai spasi).
+4. BotFather meminta **username** bot — kirim: `kelompok[X]_mikon_bot`.
+   > **Penting:** Username harus **unik** (belum dipakai orang lain) dan wajib diakhiri `bot`. Jika ditolak, coba variasi lain seperti `kelompok[X]_mikon_2025_bot` atau `kel[X]_mikonbot`.
+5. BotFather membalas berisi dua hal — **salin & simpan keduanya**:
+   - **Link bot:** `t.me/kelompok[X]_mikon_bot` (untuk membuka chat dengan bot kalian)
+   - **Token:** format panjang seperti `7123456789:AAH9xQw...` (untuk dimasukkan ke kode program)
+6. Klik link bot tersebut (bisa langsung dari chat BotFather), lalu:
+   - Tekan tombol **Start** (biasanya di bagian bawah layar chat).
+   - Kirim satu pesan apa pun, misal: `halo`.
+   - Ini wajib dilakukan agar bot mengenali chat kalian dan siap menerima/mengirim pesan dari ESP32.
 
 ### 3. Instalasi Library (platformio.ini)
 
@@ -82,14 +88,14 @@ board = esp32doit-devkit-v1
 framework = arduino
 monitor_speed = 115200
 lib_deps =
-    bblanchon/ArduinoJson@^7.4.2
+    bblanchon/ArduinoJson@^6.21.5
     shurillu/CTBot@2.1.14
     adafruit/Adafruit BME280 Library@^2.2.4
     adafruit/Adafruit Unified Sensor@^1.1.14
     adafruit/Adafruit INA219@^1.2.3
 ```
 
-> **Jika memakai ESP32-S3:** cukup ganti baris `board` menjadi `board = esp32-s3-devkitc-1` (board lain seperti `esp32-s3-devkitm-1` juga bisa). Baris library tetap sama.
+> **Jika memakai ESP32-S3:** cukup ganti baris `board` menjadi `board = esp32-s3-devkitc-1`. Baris library tetap sama.
 
 ---
 
@@ -117,7 +123,7 @@ lib_deps =
 ```cpp
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
 
@@ -126,13 +132,11 @@ Adafruit_BME280 bme;
 const char* ssid = "NAMA_HOTSPOT_HP";
 const char* password = "PASSWORD_HOTSPOT";
 
-const char* server = "api.thingspeak.com";
 String apiKey = "WRITE_API_KEY_THINGSPEAK";  // GANTI dengan API Key kalian
 
 const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
 
-WiFiClient client;
 
 void setup() {
   Serial.begin(115200);
@@ -162,25 +166,21 @@ void loop() {
     Serial.print(" C | Kelembapan: ");
     Serial.println(kelembapan);
 
-    if (client.connect(server, 80)) {
-      String postStr = apiKey;
-      postStr += "&field1=" + String(suhu);
-      postStr += "&field2=" + String(kelembapan);
+    HTTPClient http;
+    String url = "http://api.thingspeak.com/update?api_key=" + apiKey +
+                 "&field1=" + String(suhu) +
+                 "&field2=" + String(kelembapan);
 
-      client.print("POST /update HTTP/1.1\n");
-      client.print("Host: api.thingspeak.com\n");
-      client.print("Connection: close\n");
-      client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-      client.print("Content-Type: application/x-www-form-urlencoded\n");
-      client.print("Content-Length: ");
-      client.print(postStr.length());
-      client.print("\n\n");
-      client.print(postStr);
-      Serial.println("Data terkirim ke ThingSpeak!");
+    http.begin(url);
+    int httpCode = http.GET();
+    String respon = http.getString();
+    http.end();
+
+    if (httpCode == 200 && respon != "0") {
+      Serial.println("Data terkirim ke ThingSpeak, entry ke-" + respon);
     } else {
-      Serial.println("Gagal koneksi ke ThingSpeak");
+      Serial.println("Gagal kirim ke ThingSpeak (kode " + String(httpCode) + ")");
     }
-    client.stop();
   }
 }
 ```
@@ -263,7 +263,7 @@ Gabungkan Tahap 1 dan Tahap 2. Bot bisa mengendalikan LED **dan** melaporkan bac
 ```cpp
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
 #include <CTBot.h>
@@ -279,26 +279,23 @@ String apiKey = "WRITE_API_KEY_THINGSPEAK";
 const int pinLED = 18;
 const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
-WiFiClient client;
 
 void kirimThingspeak(float suhu, float kelembapan) {
-  if (client.connect("api.thingspeak.com", 80)) {
-    String postStr = apiKey;
-    postStr += "&field1=" + String(suhu);
-    postStr += "&field2=" + String(kelembapan);
+  HTTPClient http;
+  String url = "http://api.thingspeak.com/update?api_key=" + apiKey +
+               "&field1=" + String(suhu) +
+               "&field2=" + String(kelembapan);
 
-    client.print("POST /update HTTP/1.1\n");
-    client.print("Host: api.thingspeak.com\n");
-    client.print("Connection: close\n");
-    client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(postStr.length());
-    client.print("\n\n");
-    client.print(postStr);
-    Serial.println(">> ThingSpeak terkirim");
+  http.begin(url);
+  int httpCode = http.GET();
+  String respon = http.getString();
+  http.end();
+
+  if (httpCode == 200 && respon != "0") {
+    Serial.println(">> ThingSpeak terkirim, entry ke-" + respon);
+  } else {
+    Serial.println(">> ThingSpeak GAGAL (kode " + String(httpCode) + ")");
   }
-  client.stop();
 }
 
 void setup() {
@@ -382,7 +379,7 @@ void loop() {
 ```cpp
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 
@@ -391,13 +388,11 @@ Adafruit_INA219 ina219;
 const char* ssid = "NAMA_HOTSPOT_HP";
 const char* password = "PASSWORD_HOTSPOT";
 
-const char* server = "api.thingspeak.com";
 String apiKey = "WRITE_API_KEY_THINGSPEAK";  // GANTI dengan API Key kalian
 
 const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
 
-WiFiClient client;
 
 void setup() {
   Serial.begin(115200);
@@ -427,25 +422,21 @@ void loop() {
     Serial.print(" mA | Tegangan: ");
     Serial.println(tegangan_V);
 
-    if (client.connect(server, 80)) {
-      String postStr = apiKey;
-      postStr += "&field1=" + String(arus_mA);
-      postStr += "&field2=" + String(tegangan_V);
+    HTTPClient http;
+    String url = "http://api.thingspeak.com/update?api_key=" + apiKey +
+                 "&field1=" + String(arus_mA) +
+                 "&field2=" + String(tegangan_V);
 
-      client.print("POST /update HTTP/1.1\n");
-      client.print("Host: api.thingspeak.com\n");
-      client.print("Connection: close\n");
-      client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-      client.print("Content-Type: application/x-www-form-urlencoded\n");
-      client.print("Content-Length: ");
-      client.print(postStr.length());
-      client.print("\n\n");
-      client.print(postStr);
-      Serial.println("Data terkirim ke ThingSpeak!");
+    http.begin(url);
+    int httpCode = http.GET();
+    String respon = http.getString();
+    http.end();
+
+    if (httpCode == 200 && respon != "0") {
+      Serial.println("Data terkirim ke ThingSpeak, entry ke-" + respon);
     } else {
-      Serial.println("Gagal koneksi ke ThingSpeak");
+      Serial.println("Gagal kirim ke ThingSpeak (kode " + String(httpCode) + ")");
     }
-    client.stop();
   }
 }
 ```
@@ -548,7 +539,7 @@ Gabungkan Tahap 1 dan Tahap 2. Bot bisa mengendalikan servo **dan** melaporkan b
 ```cpp
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 #include <CTBot.h>
@@ -568,7 +559,6 @@ const int servoResolution = 12;
 
 const unsigned long intervalThingspeak = 20000;
 unsigned long lastSend = 0;
-WiFiClient client;
 
 void setServo(int angle) {
   angle = constrain(angle, 0, 180);
@@ -577,23 +567,21 @@ void setServo(int angle) {
 }
 
 void kirimThingspeak(float arus_mA, float tegangan_V) {
-  if (client.connect("api.thingspeak.com", 80)) {
-    String postStr = apiKey;
-    postStr += "&field1=" + String(arus_mA);
-    postStr += "&field2=" + String(tegangan_V);
+  HTTPClient http;
+  String url = "http://api.thingspeak.com/update?api_key=" + apiKey +
+               "&field1=" + String(arus_mA) +
+               "&field2=" + String(tegangan_V);
 
-    client.print("POST /update HTTP/1.1\n");
-    client.print("Host: api.thingspeak.com\n");
-    client.print("Connection: close\n");
-    client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(postStr.length());
-    client.print("\n\n");
-    client.print(postStr);
-    Serial.println(">> ThingSpeak terkirim");
+  http.begin(url);
+  int httpCode = http.GET();
+  String respon = http.getString();
+  http.end();
+
+  if (httpCode == 200 && respon != "0") {
+    Serial.println(">> ThingSpeak terkirim, entry ke-" + respon);
+  } else {
+    Serial.println(">> ThingSpeak GAGAL (kode " + String(httpCode) + ")");
   }
-  client.stop();
 }
 
 void setup() {
